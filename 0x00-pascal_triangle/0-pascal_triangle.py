@@ -14,5 +14,7 @@ def combination(n, k):
 
 def pascal_triangle(n):
     """ Pascals triangle """
+    if n <= 0:
+        return []
     return [[combination(i,j) for j in range(i+1)] for i in range(n)]
 
