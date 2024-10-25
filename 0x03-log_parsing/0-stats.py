@@ -1,96 +1,82 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
-""" parsing status code from server """
+"""Script for parsing status codes and computing metrics from logs."""
 
-import re
 import sys
+import re
 import signal
-import time
-from collections import defaultdict
 
+# Initialize global variables to store metrics
+total_file_size = 0
+status_dict = {
+    '200': 0,
+    '301': 0,
+    '400': 0,
+    '401': 0,
+    '403': 0,
+    '404': 0,
+    '405': 0,
+    '500': 0
+}
+line_count = 0
 
-signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-pattern = (
-    r'^((?:\d{1,3}\.){3}\d{1,3})'   # IP address
-    r'\s-\s'                        # Space, dash, space
-    r'\[(.*?)\]'                    # Date inside square brackets
-    r'\s"GET\s/projects/260\sHTTP/1\.1"\s'  # GET request
-    r'([1-5]\d{2})'                 # Status code (e.g., 200, 404)
-    r'\s(\d+)$'                     # File size
+# Compile the pattern to match the expected log line format
+pattern = re.compile(
+    r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) - \[(.*?)\] '
+    r'"GET /projects/260 HTTP/1\.1" ([1-5]\d{2}) (\d+)$'
 )
 
-pattern = re.compile(pattern)
-status_dict = defaultdict(int)
-status_dict['file_total'] = 0
-sorted_status = set()
 
-
-def get_input_line() -> str:
-    """ reads line from stdin """
-    return (sys.stdin.readline())
-
-
-def parse_line(line: str) -> dict:
-    """ parses the line for input """
-    global pattern
-    if "GET /projects/260 HTTP/1.1" not in line:
-        return None
-    match = pattern.match(line)
-    if match:
-        ip_address = match.group(1)
-        date = match.group(2)
-        status_code = match.group(3)
-        file_size = match.group(4)
-        return ({
-            'ip_address': ip_address,
-            'date': date,
-            'status_code': status_code,
-            'file_size': file_size
-            })
-    else:
-        return (None)
-
-
-def print_status(status_d, s_status):
-    """ print the status of line """
-    total = status_d['file_total']
-    sys.stdout.write(f'File size: {total}\n')
-    for statuss in sorted(s_status):
-        count = status_dict[statuss]
-        sys.stdout.write(f'{statuss}: {count}\n')
+def print_statistics():
+    """Print accumulated file size and count of each status code."""
+    global total_file_size, status_dict
+    print(f"File size: {total_file_size}")
+    for status_code in sorted(status_dict.keys()):
+        if status_dict[status_code] > 0:
+            print(f"{status_code}: {status_dict[status_code]}")
 
 
 def sigint_handler(signum, frame):
-    """ handles Ctrl+C signal """
-    global sorted_status
-    global status_dict
-    print_status(status_dict, sorted_status)
-    raise KeyboardInterrupt
+    """Handle keyboard interrupt and print statistics."""
+    print_statistics()
+    sys.exit(0)
 
 
-def main():
-    """ main loop """
-    global sorted_status
-    cnt = 1
-    for i in range(10000):
-        cnt += 1
-        parsed_log = parse_line(get_input_line())
-        if (parsed_log is not None):
-            status = parsed_log['status_code']
-            size = parsed_log['file_size']
-            if status.isdigit():
-                status_dict[status] += 1
-                sorted_status.add(status)
-            if size.isdigit():
-                status_dict['file_total'] += int(size)
+def process_line(line):
+    """
+    Parse and process each log line.
+    Update the total file size and status code counts.
+    """
+    global total_file_size, status_dict, line_count
 
-            if (cnt == 10):
-                print_status(status_dict, sorted_status)
-                sorted_status = set()
-                cnt = 0
+    match = pattern.match(line)
+    if match:
+        status_code = match.group(3)
+        file_size = match.group(4)
+
+        total_file_size += int(file_size)
+
+        if status_code in status_dict:
+            status_dict[status_code] += 1
+
+        line_count += 1
+
+        if line_count % 10 == 0:
+            print_statistics()
 
 
 if __name__ == "__main__":
+    # Set signal handler for CTRL + C (SIGINT)
     signal.signal(signal.SIGINT, sigint_handler)
 
-    main()
+    try:
+        # Process each line from stdin
+        for line in sys.stdin:
+            process_line(line.strip())
+    except KeyboardInterrupt:
+        # Handle any remaining statistics before exit
+        print_statistics()
+        sys.exit(0)
+
+    # Print final statistics after EOF
+    print_statistics()
