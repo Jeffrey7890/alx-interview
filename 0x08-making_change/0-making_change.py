@@ -2,6 +2,7 @@
 
 """ making change interview question """
 
+
 def makeChange(coins, total):
     if total <= 0:
         return 0
@@ -15,4 +16,3 @@ def makeChange(coins, total):
             dp[i] = min(dp[i], dp[i - coin] + 1)
 
     return dp[total] if dp[total] != float('inf') else -1
-
